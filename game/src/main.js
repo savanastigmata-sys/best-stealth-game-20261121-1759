@@ -10,6 +10,11 @@ const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
 const state = createGameState();
 
+// Test hook for the Playwright smoke test (tests/playwright-smoke.mjs):
+// the live game state, so the browser test can assert screens, score and
+// positions instead of guessing from pixels. Harmless in normal play.
+window.__nightshade = state;
+
 const params = new URLSearchParams(window.location.search);
 const shotName = params.get('shot');
 if (shotName) {

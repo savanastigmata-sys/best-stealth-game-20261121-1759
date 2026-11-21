@@ -20,7 +20,7 @@ export function ensureAudio() {
     masterGain.gain.value = 0.5;
     masterGain.connect(audioContext.destination);
     return true;
-  } catch (e) {
+  } catch {
     return false;
   }
 }

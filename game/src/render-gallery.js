@@ -6,7 +6,7 @@
 import { CANVAS_WIDTH, CANVAS_HEIGHT, COLORS, GUARD, TILE } from './config.js';
 import { WINGS } from './level-gallery.js';
 import { computeVisionCone } from './vision-cones.js';
-import { STATE_PATROL, STATE_SUSPICIOUS, STATE_ALERT, STATE_SEARCH } from './guard-patrols.js';
+import { STATE_SUSPICIOUS, STATE_ALERT, STATE_SEARCH } from './guard-patrols.js';
 import { allRelicsTaken } from './player-stealth.js';
 import { drawPebbles } from './pebble-distract.js';
 
@@ -25,7 +25,7 @@ function roundRect(ctx, x, y, w, h, r) {
   ctx.closePath();
 }
 
-function drawFloor(ctx, level, time) {
+function drawFloor(ctx, level, _time) {
   ctx.fillStyle = COLORS.floorDark;
   ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
   for (let ty = 0; ty < CANVAS_HEIGHT / TILE; ty += 1) {
@@ -170,7 +170,7 @@ function drawVisionCone(ctx, level, guard) {
   ctx.stroke();
 }
 
-function drawGuard(ctx, guard, time) {
+function drawGuard(ctx, guard, _time) {
   ctx.fillStyle = COLORS.guardUniform;
   ctx.beginPath();
   ctx.arc(guard.x, guard.y, GUARD.radius, 0, Math.PI * 2);
@@ -227,7 +227,7 @@ function drawGuard(ctx, guard, time) {
   }
 }
 
-function drawPlayer(ctx, player, time) {
+function drawPlayer(ctx, player, _time) {
   // Footstep noise ring: what the guards can hear, drawn for the player.
   if (player.noiseRadius > 0) {
     const pulse = 0.5 + 0.5 * Math.sin(player.noisePulse);
@@ -275,7 +275,7 @@ function drawPlayer(ctx, player, time) {
   }
 }
 
-function drawShadowOverlay(ctx, level) {
+function drawShadowOverlay(ctx, _level) {
   // The gallery is dark between the lamps: shadow is safety.
   ctx.fillStyle = 'rgba(5, 8, 14, 0.15)';
   ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
@@ -364,7 +364,7 @@ function formatTime(seconds) {
   return `${m}:${String(s).padStart(2, '0')}`;
 }
 
-function drawTitle(ctx, state) {
+function drawTitle(ctx, _state) {
   ctx.fillStyle = 'rgba(5, 8, 14, 0.78)';
   ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
   ctx.textAlign = 'center';

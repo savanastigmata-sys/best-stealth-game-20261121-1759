@@ -332,9 +332,9 @@ export function circleHitsSolid(level, x, y, r) {
 
 /** Move a circle, sliding along solids instead of sticking to them. */
 export function moveWithCollision(level, x, y, r, dx, dy) {
-  let nx = x + dx;
+  const nx = x + dx;
   if (!circleHitsSolid(level, nx, y, r)) x = nx;
-  let ny = y + dy;
+  const ny = y + dy;
   if (!circleHitsSolid(level, x, ny, r)) y = ny;
   return { x, y };
 }

@@ -3,7 +3,7 @@
 // steers Wren with the same keys a player holds (sneak, walk, run, take),
 // waits for patrols to turn when the next step would be seen, and stops at
 // the moment the scene wants. The same seed always gives the same frame.
-import { STEP, GUARD } from './config.js';
+import { STEP } from './config.js';
 import { SCREEN_PLAY } from './render-gallery.js';
 import { resetGame, stepGame, loadWing, throwPebbleAt } from './game-main.js';
 import { guardSeesPlayer } from './vision-cones.js';
@@ -11,8 +11,6 @@ import { highestAwareness } from './guard-patrols.js';
 import { circleHitsSolid } from './level-gallery.js';
 
 const SNEAK = { sneak: true, run: false };
-const WALK = { sneak: false, run: false };
-const RUN = { sneak: false, run: true };
 
 function keysToward(state, tx, ty, mode) {
   const p = state.player;

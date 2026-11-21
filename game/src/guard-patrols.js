@@ -3,7 +3,7 @@
 // suspicious (heard or glimpsed something: turn and look), alert (saw the
 // player: chase), search (lost the player: check the last seen spot), then
 // back to patrol. Awareness is the meter that drives the changes.
-import { GUARD, STEP } from './config.js';
+import { GUARD } from './config.js';
 import { moveWithCollision } from './level-gallery.js';
 import { guardSeesPlayer, detectionRate } from './vision-cones.js';
 
