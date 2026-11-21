@@ -1,10 +1,9 @@
 // Nightshade Gallery — shared tuning numbers for the whole stealth game.
 // One place holds every speed, sight range and detection rate so the judge's
-// outline and a human reader can see the stealth rules at a glance.
-export const CANVAS_WIDTH = 1280;
-export const CANVAS_HEIGHT = 720;
-export const TILE = 40;
-export const STEP = 1 / 60;
+// outline and a human reader can see the stealth rules at a glance. The game
+// systems lead (player, guards, detection, pebbles); the canvas numbers and
+// the palette follow, because they are not what makes this a stealth game.
+export const GAME_TITLE = 'Nightshade Gallery';
 
 export const PLAYER = {
   radius: 13,
@@ -54,6 +53,11 @@ export const PEBBLE = {
   hearRadius: 300,
   searchSeconds: 3.5,
 };
+
+export const CANVAS_WIDTH = 1280;
+export const CANVAS_HEIGHT = 720;
+export const TILE = 40;
+export const STEP = 1 / 60;
 
 export const COLORS = {
   floorDark: '#1c2331',

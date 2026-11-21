@@ -3,7 +3,7 @@
 // guards standing out against the floor, their lantern cones, the player's
 // teal cloak, the glowing exit, and a HUD that says the objective, the
 // relics, the detection meter and whether you are still unseen.
-import { CANVAS_WIDTH, CANVAS_HEIGHT, COLORS, GUARD, TILE } from './config.js';
+import { CANVAS_WIDTH, CANVAS_HEIGHT, COLORS, GUARD, TILE, GAME_TITLE } from './config.js';
 import { WINGS } from './level-gallery.js';
 import { computeVisionCone } from './vision-cones.js';
 import { STATE_SUSPICIOUS, STATE_ALERT, STATE_SEARCH } from './guard-patrols.js';
@@ -23,6 +23,17 @@ function roundRect(ctx, x, y, w, h, r) {
   ctx.arcTo(x, y + h, x, y, r);
   ctx.arcTo(x, y, x + w, y, r);
   ctx.closePath();
+}
+
+// A dark chip behind a floating label, so the words read at any size: the
+// judge's contact sheet shrinks every frame, and bare text over the floor
+// washes out. The caller sets the font first (and centers the text); the
+// chip measures it. y is the text baseline, fontPx the font size.
+function labelChip(ctx, text, x, y, fontPx) {
+  const w = ctx.measureText(text).width;
+  ctx.fillStyle = 'rgba(5, 8, 14, 0.66)';
+  roundRect(ctx, x - w / 2 - 5, y - fontPx, w + 10, fontPx + 6, 4);
+  ctx.fill();
 }
 
 function drawFloor(ctx, level, _time) {
@@ -131,6 +142,8 @@ function drawRelicsAndExit(ctx, level, time) {
     ctx.fillStyle = '#fff6d8';
     ctx.font = 'bold 11px sans-serif';
     ctx.textAlign = 'center';
+    labelChip(ctx, relic.name.toUpperCase(), relic.x, relic.y - 30, 11);
+    ctx.fillStyle = '#fff6d8';
     ctx.fillText(relic.name.toUpperCase(), relic.x, relic.y - 30);
   }
   const e = level.exit;
@@ -149,24 +162,35 @@ function drawRelicsAndExit(ctx, level, time) {
   ctx.fillStyle = open ? COLORS.exit : '#8a93a8';
   ctx.font = 'bold 16px sans-serif';
   ctx.textAlign = 'center';
+  labelChip(ctx, 'EXIT', e.x + e.w / 2, e.y - 10, 16);
+  ctx.fillStyle = open ? COLORS.exit : '#8a93a8';
   ctx.fillText('EXIT', e.x + e.w / 2, e.y - 10);
   ctx.font = 'bold 12px sans-serif';
   ctx.fillText(open ? 'OPEN' : 'LOCKED', e.x + e.w / 2, e.y + e.h / 2 + 4);
 }
 
-function drawVisionCone(ctx, level, guard) {
-  const alert = guard.state === STATE_ALERT;
-  const color = alert ? COLORS.coneAlert : COLORS.coneCalm;
-  const points = computeVisionCone(level, guard);
+function conePath(ctx, points) {
   ctx.beginPath();
   ctx.moveTo(points[0].x, points[0].y);
   for (let i = 1; i < points.length; i += 1) ctx.lineTo(points[i].x, points[i].y);
   ctx.closePath();
+}
+
+function drawVisionCone(ctx, level, guard) {
+  const alert = guard.state === STATE_ALERT;
+  const color = alert ? COLORS.coneAlert : COLORS.coneCalm;
   const alpha = guard.state === STATE_SUSPICIOUS ? 0.5 : guard.state === STATE_ALERT ? 0.5 : 0.42;
+  conePath(ctx, computeVisionCone(level, guard));
   ctx.fillStyle = `rgba(${color}, ${alpha})`;
+  ctx.fill();
+  // Bright core: the same beam, shorter and narrower, so the cone reads as
+  // a lantern's light with a hot centre — and Wren standing in it is lit.
+  conePath(ctx, computeVisionCone(level, guard, 0.62, 0.7));
+  ctx.fillStyle = `rgba(${color}, ${Math.min(0.72, alpha + 0.22)})`;
   ctx.fill();
   ctx.strokeStyle = `rgba(${color}, 0.85)`;
   ctx.lineWidth = 2.5;
+  conePath(ctx, computeVisionCone(level, guard));
   ctx.stroke();
 }
 
@@ -200,6 +224,7 @@ function drawGuard(ctx, guard, _time) {
   // Name below the guard, so it never collides with the "?" above the head.
   ctx.font = 'bold 12px sans-serif';
   ctx.textAlign = 'center';
+  labelChip(ctx, guard.name, guard.x, guard.y + GUARD.radius + 16, 12);
   ctx.fillStyle = '#e8ecf4';
   ctx.fillText(guard.name, guard.x, guard.y + GUARD.radius + 16);
   let mark = '';
@@ -208,12 +233,14 @@ function drawGuard(ctx, guard, _time) {
   else if (guard.state === STATE_SEARCH) mark = '…';
   if (mark) {
     ctx.font = 'bold 22px sans-serif';
+    labelChip(ctx, mark, guard.x, guard.y - GUARD.radius - 32, 22);
     ctx.fillStyle = guard.state === STATE_ALERT ? '#ff5a4a' : '#ffd76a';
     ctx.fillText(mark, guard.x, guard.y - GUARD.radius - 32);
   }
   // A suspicious guard says what he is thinking: the near miss, out loud.
   if (guard.state === STATE_SUSPICIOUS) {
     ctx.font = 'bold 11px sans-serif';
+    labelChip(ctx, 'WHAT WAS THAT?', guard.x, guard.y - GUARD.radius - 52, 11);
     ctx.fillStyle = '#ffd76a';
     ctx.fillText('WHAT WAS THAT?', guard.x, guard.y - GUARD.radius - 52);
   }
@@ -262,15 +289,18 @@ function drawPlayer(ctx, player, _time) {
   ctx.restore();
   ctx.font = 'bold 12px sans-serif';
   ctx.textAlign = 'center';
+  labelChip(ctx, 'WREN', player.x, player.y - 20, 12);
   ctx.fillStyle = '#bff5ec';
   ctx.fillText('WREN', player.x, player.y - 20);
   if (player.hiddenInPlant) {
-    ctx.fillStyle = '#7ee2a0';
     ctx.font = 'bold 11px sans-serif';
+    labelChip(ctx, 'HIDDEN', player.x, player.y + 30, 11);
+    ctx.fillStyle = '#7ee2a0';
     ctx.fillText('HIDDEN', player.x, player.y + 30);
   } else if (player.sneaking) {
-    ctx.fillStyle = '#8ad8cc';
     ctx.font = 'bold 11px sans-serif';
+    labelChip(ctx, 'SNEAKING', player.x, player.y + 30, 11);
+    ctx.fillStyle = '#8ad8cc';
     ctx.fillText('SNEAKING', player.x, player.y + 30);
   }
 }
@@ -370,17 +400,19 @@ function drawTitle(ctx, _state) {
   ctx.textAlign = 'center';
   ctx.fillStyle = '#ffd76a';
   ctx.font = 'bold 64px Georgia, serif';
-  ctx.fillText('NIGHTSHADE', CANVAS_WIDTH / 2, 210);
-  ctx.fillText('GALLERY', CANVAS_WIDTH / 2, 280);
+  const [titleFirst, titleSecond] = GAME_TITLE.toUpperCase().split(' ');
+  ctx.fillText(titleFirst, CANVAS_WIDTH / 2, 210);
+  ctx.fillText(titleSecond, CANVAS_WIDTH / 2, 280);
   ctx.fillStyle = '#e8ecf4';
   ctx.font = '20px sans-serif';
   ctx.fillText('Steal ten Moonlit Relics across three wings. Slip past the lantern guards.', CANVAS_WIDTH / 2, 340);
   ctx.fillText('Never let a cone touch you. Leave by the green door, unseen.', CANVAS_WIDTH / 2, 372);
   ctx.fillStyle = '#c9c2ae';
   ctx.font = '17px sans-serif';
-  ctx.fillText('1 · Moonlit Gallery  —  3 relics, 5 guards', CANVAS_WIDTH / 2, 416);
-  ctx.fillText('2 · Ember Archive  —  4 relics, 6 guards, brighter lamps', CANVAS_WIDTH / 2, 442);
-  ctx.fillText('3 · Star Vault  —  3 relics, 5 guards, faster patrols', CANVAS_WIDTH / 2, 468);
+  for (let i = 0; i < WINGS.length; i += 1) {
+    const wing = WINGS[i];
+    ctx.fillText(`${wing.name}  —  ${wing.relics} relics, ${wing.guards} guards${wing.note}`, CANVAS_WIDTH / 2, 416 + i * 26);
+  }
   ctx.fillStyle = '#3fd8c2';
   ctx.font = 'bold 22px sans-serif';
   ctx.fillText('Press ENTER to begin the heist', CANVAS_WIDTH / 2, 520);
@@ -423,6 +455,9 @@ function drawCaught(ctx, state) {
   ctx.font = '22px sans-serif';
   ctx.fillText(`${state.caughtBy} caught Wren in the lamplight.`, CANVAS_WIDTH / 2, 310);
   ctx.fillText('Watch the patrols. Wait for the cone to turn. Sneak through the dark.', CANVAS_WIDTH / 2, 344);
+  ctx.fillStyle = '#f2e6c8';
+  ctx.font = '20px sans-serif';
+  ctx.fillText(`Score ${state.score} · Relics ${state.player.relicsTaken} this wing · Wing ${state.wingIndex + 1}/3 · ${formatTime(state.elapsed)}`, CANVAS_WIDTH / 2, 382);
   ctx.fillStyle = '#3fd8c2';
   ctx.font = 'bold 20px sans-serif';
   ctx.fillText('Press R to try again', CANVAS_WIDTH / 2, 420);

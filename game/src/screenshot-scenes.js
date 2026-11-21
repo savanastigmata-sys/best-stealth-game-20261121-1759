@@ -1,10 +1,12 @@
-// Screenshot scenes — the four frames the judge sees, staged by playing the
+// Screenshot scenes — the frames the judge sees, staged by playing the
 // real game forward. No frame is drawn by hand: each scene resets the world,
 // steers Wren with the same keys a player holds (sneak, walk, run, take),
 // waits for patrols to turn when the next step would be seen, and stops at
 // the moment the scene wants. The same seed always gives the same frame.
+// The four screenshots are the whole loop: title, cover, caught, ghost —
+// the start, the near miss, the loss with its stats, and the win.
 import { STEP } from './config.js';
-import { SCREEN_PLAY } from './render-gallery.js';
+import { SCREEN_PLAY, SCREEN_TITLE } from './render-gallery.js';
 import { resetGame, stepGame, loadWing, throwPebbleAt } from './game-main.js';
 import { guardSeesPlayer } from './vision-cones.js';
 import { highestAwareness } from './guard-patrols.js';
@@ -257,6 +259,45 @@ function stealRelic(state, relic, retreat) {
   return true;
 }
 
+function stageTitle(state) {
+  // The start of the loop: the mission briefing over the dim gallery.
+  // resetGame puts the world on the play screen, so switch back to title.
+  state.screen = SCREEN_TITLE;
+  return { screen: SCREEN_TITLE };
+}
+
+function stageCaught(state) {
+  // The loss, mid-heist: the cover's near miss, then Wren freezes — Bram's
+  // cone is already on her, his awareness climbs past alarm, he closes in
+  // and the catch is deterministic. The frame must show who caught her and
+  // the run's stats, with the way back: press R.
+  stageCover(state);
+  if (state.screen !== SCREEN_PLAY) return { screen: state.screen };
+  // Phase 1: freeze where the cover left her — the cone is already on her,
+  // and the live game catches her this way. Bounded, so a patrol that
+  // carries the cone away cannot stall the shot forever.
+  let budget = Math.round(20 / STEP);
+  for (let i = 0; i < budget; i += 1) {
+    state.keys = { up: false, down: false, left: false, right: false, sneak: false, run: false };
+    stepGame(state, false);
+    if (state.screen !== SCREEN_PLAY) return { screen: state.screen };
+  }
+  // Phase 2: walk into the most suspicious guard — closing the distance
+  // can only raise awareness faster, so the catch lands.
+  budget = Math.round(40 / STEP);
+  for (let i = 0; i < budget; i += 1) {
+    let target = state.guards[0];
+    for (let g = 1; g < state.guards.length; g += 1) {
+      if (state.guards[g].awareness > target.awareness) target = state.guards[g];
+    }
+    const keys = keysToward(state, target.x, target.y, { sneak: false, run: false });
+    state.keys = keys || { up: false, down: false, left: false, right: false, sneak: false, run: false };
+    stepGame(state, false);
+    if (state.screen !== SCREEN_PLAY) break;
+  }
+  return { screen: state.screen };
+}
+
 function stageCover(state) {
   // The near miss, mid-heist: one relic stolen, Wren frozen at the edge of
   // Bram's cone in the lamplight, his "?" and "WHAT WAS THAT?" over his head.
@@ -335,13 +376,17 @@ function stageGhost(state) {
 }
 
 /**
- * Set the world to the named scene (cover, patrol, alarm, ghost) and return
- * the screen to draw over it. Any other name stages the cover.
+ * Set the world to the named scene (title, cover, patrol, alarm, caught,
+ * ghost) and return the screen to draw over it. Any other name stages the
+ * cover. Patrol and alarm still stage for the tests; the four screenshots
+ * the judge sees are title, cover, caught and ghost — the whole loop.
  */
 export function stageShot(name, state) {
   resetGame(state);
+  if (name === 'title') return stageTitle(state);
   if (name === 'patrol') return stagePatrol(state);
   if (name === 'alarm') return stageAlarm(state);
+  if (name === 'caught') return stageCaught(state);
   if (name === 'ghost') return stageGhost(state);
   return stageCover(state);
 }

@@ -1,14 +1,17 @@
 // Browser wiring for Nightshade Gallery: keyboard and mouse input, the
 // animation loop, and the ?shot= staging that renders one fixed scene for a
 // screenshot. No network, no libraries: the canvas and these modules are all.
-import { CANVAS_WIDTH, CANVAS_HEIGHT, STEP } from './config.js';
+import { CANVAS_WIDTH, CANVAS_HEIGHT, STEP, GAME_TITLE } from './config.js';
 import { createGameState, startGame, resetGame, stepGame, throwPebbleAt } from './game-main.js';
 import { drawGame, SCREEN_TITLE, SCREEN_PLAY } from './render-gallery.js';
 import { stageShot } from './screenshot-scenes.js';
 
+// The world first: the state is what the game is; the canvas is only where
+// it is drawn.
+const state = createGameState();
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
-const state = createGameState();
+document.title = GAME_TITLE;
 
 // Test hook for the Playwright smoke test (tests/playwright-smoke.mjs):
 // the live game state, so the browser test can assert screens, score and
@@ -21,7 +24,7 @@ if (shotName) {
   // A staged screenshot: play the real game to the scene, then hold the frame.
   stageShot(shotName, state);
   drawGame(ctx, state);
-  document.title = `Nightshade Gallery — ${shotName}`;
+  document.title = `${GAME_TITLE} — ${shotName}`;
 } else {
   const KEYMAP = {
     ArrowUp: 'up', KeyW: 'up',

@@ -8,12 +8,7 @@
 //   or: npm run test:browser
 import { spawn } from 'node:child_process';
 import { mkdirSync, statSync } from 'node:fs';
-import { createRequire } from 'node:module';
-import { execSync } from 'node:child_process';
-
-const globalRoot = execSync('npm root -g', { encoding: 'utf8' }).trim();
-const require = createRequire(globalRoot + '/playwright/package.json');
-const { chromium } = require('playwright');
+import { chromium } from 'playwright';
 
 const ENTRY = '/home/hatch/workspace/makefun/best-stealth-game-20261121-1759-entry';
 const SHOTS = `${ENTRY}/tests/browser-shots`;
@@ -211,15 +206,32 @@ async function main() {
   }
   await page.screenshot({ path: `${SHOTS}/06-caught.png` });
 
+  // 8b. The deterministic caught shot: the same staging the ?shot=caught
+  // screenshot uses, run in the live page — it must land on the caught
+  // screen with the same stats the Node sim produces (Bram, score 100).
+  await page.keyboard.press('r');
+  await page.waitForTimeout(300);
+  await page.evaluate(() => {
+    const m = window.__nightshade;
+    return import('/src/screenshot-scenes.js').then((mod) => mod.stageShot('caught', m));
+  });
+  await page.waitForTimeout(300);
+  s = await snap(page);
+  console.log('caught (staged) in browser:', JSON.stringify(s));
+  if (s.screen !== 'caught' || s.caughtBy !== 'Bram' || s.score !== 100 || s.detections !== 1) {
+    fail(`staged caught screen wrong: ${JSON.stringify(s)}`);
+  }
+  await page.screenshot({ path: `${SHOTS}/07-caught-staged.png` });
+
   // 9. Zero tolerance: no console error, no page error, no failed request.
   console.log('console errors:', JSON.stringify(errors));
   console.log('failed requests:', JSON.stringify(failedRequests));
   if (errors.length) fail(`${errors.length} console/page errors`);
   if (failedRequests.length) fail(`${failedRequests.length} failed requests`);
-  for (const f of ['01-title.png', '02-play.png', '03-pebble.png', '05-win.png', '06-caught.png']) {
+  for (const f of ['01-title.png', '02-play.png', '03-pebble.png', '05-win.png', '06-caught.png', '07-caught-staged.png']) {
     if (statSync(`${SHOTS}/${f}`).size < 10000) fail(`screenshot ${f} suspiciously small`);
   }
-  console.log('PLAYWRIGHT SMOKE OK — title, play, move, pebble, restart, win, caught, 0 errors');
+  console.log('PLAYWRIGHT SMOKE OK — title, play, move, pebble, restart, win, caught, caught-staged, 0 errors');
 }
 
 try {

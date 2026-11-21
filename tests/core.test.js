@@ -47,6 +47,15 @@ describe('the three wings', () => {
     expect(guards).toBe(16);
   });
 
+  it('the WINGS table matches the built levels (title screen source of truth)', () => {
+    for (let i = 0; i < WINGS.length; i += 1) {
+      const level = buildWing(i);
+      expect(WINGS[i].relics).toBe(level.relics.length);
+      expect(WINGS[i].guards).toBe(level.guardSpawns.length);
+      expect(WINGS[i].patrolSpeedMul).toBe(level.patrolSpeedMul ?? 1);
+    }
+  });
+
   it('every relic, exit and guard waypoint is reachable in every wing', () => {
     const GRID_W = 32;
     const GRID_H = 18;
@@ -148,6 +157,35 @@ describe('win and lose', () => {
     expect(state.screen).toBe(SCREEN_CAUGHT);
     expect(state.detections).toBeGreaterThanOrEqual(1);
     expect(state.caughtBy).toBe('Bram');
+  });
+
+  it('the caught scene stages deterministically: Bram, score 100, 1 relic', () => {
+    const snap = (state) => ({
+      screen: state.screen,
+      caughtBy: state.caughtBy,
+      score: state.score,
+      relicsTaken: state.player.relicsTaken,
+      wing: state.wingIndex,
+      detections: state.detections,
+      elapsed: +state.elapsed.toFixed(2),
+    });
+    const a = freshPlaying();
+    stageShot('caught', a);
+    expect(snap(a).screen).toBe(SCREEN_CAUGHT);
+    expect(snap(a).caughtBy).toBe('Bram');
+    expect(snap(a).score).toBe(100);
+    expect(snap(a).relicsTaken).toBe(1);
+    const b = freshPlaying();
+    stageShot('caught', b);
+    expect(snap(b)).toEqual(snap(a));
+  });
+
+  it('the title scene stages the mission briefing screen', () => {
+    const state = freshPlaying();
+    stageShot('title', state);
+    expect(state.screen).toBe(SCREEN_TITLE);
+    expect(state.score).toBe(0);
+    expect(state.detections).toBe(0);
   });
 
   it('clearing a wing pays +250 and advances', () => {

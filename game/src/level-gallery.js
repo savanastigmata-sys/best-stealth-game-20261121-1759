@@ -5,6 +5,17 @@
 // Lamplight pools are bright ground; the dark floor between them is shadow.
 import { CANVAS_WIDTH, CANVAS_HEIGHT } from './config.js';
 
+// The three wings of one heist, in order: 10 relics, 16 guards, one night.
+// First in this file so the depth reads at a glance: each wing names its
+// relic and guard counts, its patrol speed, and what makes it harder than
+// the last. The builders below are function declarations, so they are
+// hoisted and this table may name them before their definitions.
+export const WINGS = [
+  { id: 'gallery', name: '1 · MOONLIT GALLERY', short: 'Gallery', relics: 3, guards: 5, patrolSpeedMul: 1, note: '', build: buildGalleryLevel },
+  { id: 'archive', name: '2 · EMBER ARCHIVE', short: 'Archive', relics: 4, guards: 6, patrolSpeedMul: 1.1, note: ', brighter lamps', build: buildArchiveLevel },
+  { id: 'vault', name: '3 · STAR VAULT', short: 'Vault', relics: 3, guards: 5, patrolSpeedMul: 1.25, note: ', faster patrols', build: buildVaultLevel },
+];
+
 function rect(x, y, w, h) {
   return { x, y, w, h };
 }
@@ -289,13 +300,6 @@ export function buildVaultLevel() {
   const guardRoutes = guardSpawns.map((s) => ({ color: s.color, points: s.route }));
   return { walls, plinths, plants, lamps, relics, exit, playerStart, guardSpawns, guardRoutes, patrolSpeedMul: 1.25 };
 }
-
-// The three wings of one heist, in order: 10 relics, 16 guards, one night.
-export const WINGS = [
-  { id: 'gallery', name: '1 · MOONLIT GALLERY', short: 'Gallery', build: buildGalleryLevel },
-  { id: 'archive', name: '2 · EMBER ARCHIVE', short: 'Archive', build: buildArchiveLevel },
-  { id: 'vault', name: '3 · STAR VAULT', short: 'Vault', build: buildVaultLevel },
-];
 
 export function buildWing(index) {
   return WINGS[index].build();
