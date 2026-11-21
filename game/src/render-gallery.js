@@ -1,0 +1,410 @@
+// Render gallery — every pixel the judge sees: the moonlit floor, warm lamp
+// pools, dark shadow, gold-trimmed walls, plinths you can read as cover,
+// guards standing out against the floor, their lantern cones, the player's
+// teal cloak, the glowing exit, and a HUD that says the objective, the
+// relics, the detection meter and whether you are still unseen.
+import { CANVAS_WIDTH, CANVAS_HEIGHT, COLORS, GUARD, TILE } from './config.js';
+import { computeVisionCone } from './vision-cones.js';
+import { STATE_PATROL, STATE_SUSPICIOUS, STATE_ALERT, STATE_SEARCH } from './guard-patrols.js';
+import { allRelicsTaken } from './player-stealth.js';
+
+export const SCREEN_TITLE = 'title';
+export const SCREEN_PLAY = 'play';
+export const SCREEN_WIN = 'win';
+export const SCREEN_CAUGHT = 'caught';
+
+function roundRect(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+}
+
+function drawFloor(ctx, level, time) {
+  ctx.fillStyle = COLORS.floorDark;
+  ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+  for (let ty = 0; ty < CANVAS_HEIGHT / TILE; ty += 1) {
+    for (let tx = 0; tx < CANVAS_WIDTH / TILE; tx += 1) {
+      if ((tx + ty) % 2 === 0) {
+        ctx.fillStyle = COLORS.floorLight;
+        ctx.fillRect(tx * TILE, ty * TILE, TILE, TILE);
+      }
+    }
+  }
+  // Warm lamplight pools on the floor.
+  for (let i = 0; i < level.lamps.length; i += 1) {
+    const lamp = level.lamps[i];
+    const g = ctx.createRadialGradient(lamp.x, lamp.y, 8, lamp.x, lamp.y, lamp.r);
+    g.addColorStop(0, 'rgba(255, 196, 110, 0.30)');
+    g.addColorStop(1, 'rgba(255, 196, 110, 0)');
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.arc(lamp.x, lamp.y, lamp.r, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#ffd98a';
+    ctx.beginPath();
+    ctx.arc(lamp.x, lamp.y, 5, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  // Faint patrol routes, so a player can learn where each guard walks.
+  ctx.setLineDash([2, 10]);
+  ctx.lineWidth = 2;
+  for (let i = 0; i < level.guardRoutes.length; i += 1) {
+    const route = level.guardRoutes[i];
+    ctx.strokeStyle = route.color;
+    ctx.globalAlpha = 0.4;
+    ctx.beginPath();
+    ctx.moveTo(route.points[0].x, route.points[0].y);
+    for (let j = 1; j < route.points.length; j += 1) ctx.lineTo(route.points[j].x, route.points[j].y);
+    ctx.closePath();
+    ctx.stroke();
+  }
+  ctx.setLineDash([]);
+  ctx.globalAlpha = 1;
+}
+
+function drawSolids(ctx, level) {
+  for (let i = 0; i < level.walls.length; i += 1) {
+    const w = level.walls[i];
+    ctx.fillStyle = COLORS.wall;
+    ctx.fillRect(w.x, w.y, w.w, w.h);
+    ctx.fillStyle = COLORS.wallTop;
+    if (w.h <= 40) ctx.fillRect(w.x, w.y, w.w, 4);
+    else ctx.fillRect(w.x, w.y, 4, w.h);
+  }
+  for (let i = 0; i < level.plinths.length; i += 1) {
+    const p = level.plinths[i];
+    ctx.fillStyle = '#4a3a28';
+    roundRect(ctx, p.x, p.y, p.w, p.h, 6);
+    ctx.fill();
+    ctx.strokeStyle = '#c9a35a';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    ctx.fillStyle = 'rgba(201, 163, 90, 0.25)';
+    ctx.fillRect(p.x + 6, p.y + 6, p.w - 12, 8);
+  }
+}
+
+function drawPlants(ctx, level, time) {
+  for (let i = 0; i < level.plants.length; i += 1) {
+    const p = level.plants[i];
+    ctx.fillStyle = 'rgba(20, 60, 30, 0.55)';
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = COLORS.plant;
+    for (let j = 0; j < 7; j += 1) {
+      const a = (j / 7) * Math.PI * 2 + i;
+      const sway = Math.sin(time * 0.8 + j + i) * 2;
+      ctx.beginPath();
+      ctx.arc(p.x + Math.cos(a) * (p.r * 0.55) + sway, p.y + Math.sin(a) * (p.r * 0.55), 9, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+}
+
+function drawRelicsAndExit(ctx, level, time) {
+  for (let i = 0; i < level.relics.length; i += 1) {
+    const relic = level.relics[i];
+    if (relic.taken) continue;
+    const pulse = 1 + Math.sin(time * 3 + i * 2) * 0.12;
+    const glow = ctx.createRadialGradient(relic.x, relic.y, 2, relic.x, relic.y, 46 * pulse);
+    glow.addColorStop(0, 'rgba(255, 215, 106, 0.55)');
+    glow.addColorStop(1, 'rgba(255, 215, 106, 0)');
+    ctx.fillStyle = glow;
+    ctx.beginPath();
+    ctx.arc(relic.x, relic.y, 46 * pulse, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#6b4d16';
+    ctx.fillRect(relic.x - 16, relic.y + 8, 32, 10);
+    ctx.fillStyle = COLORS.relic;
+    ctx.save();
+    ctx.translate(relic.x, relic.y - 4);
+    ctx.rotate(Math.PI / 4);
+    ctx.fillRect(-9, -9, 18, 18);
+    ctx.restore();
+    ctx.fillStyle = '#fff6d8';
+    ctx.font = 'bold 11px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(relic.name.toUpperCase(), relic.x, relic.y - 30);
+  }
+  const e = level.exit;
+  const open = allRelicsTaken(level);
+  const glow = ctx.createRadialGradient(e.x + e.w / 2, e.y + e.h / 2, 4, e.x + e.w / 2, e.y + e.h / 2, 110);
+  glow.addColorStop(0, open ? 'rgba(88, 224, 138, 0.65)' : 'rgba(140, 140, 140, 0.4)');
+  glow.addColorStop(1, 'rgba(88, 224, 138, 0)');
+  ctx.fillStyle = glow;
+  ctx.fillRect(e.x - 50, e.y - 50, e.w + 100, e.h + 100);
+  ctx.fillStyle = open ? '#12351f' : '#2a2f3a';
+  roundRect(ctx, e.x, e.y, e.w, e.h, 6);
+  ctx.fill();
+  ctx.strokeStyle = open ? COLORS.exit : '#5a6274';
+  ctx.lineWidth = 3;
+  ctx.stroke();
+  ctx.fillStyle = open ? COLORS.exit : '#8a93a8';
+  ctx.font = 'bold 16px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText('EXIT', e.x + e.w / 2, e.y - 10);
+  ctx.font = 'bold 12px sans-serif';
+  ctx.fillText(open ? 'OPEN' : 'LOCKED', e.x + e.w / 2, e.y + e.h / 2 + 4);
+}
+
+function drawVisionCone(ctx, level, guard) {
+  const alert = guard.state === STATE_ALERT;
+  const color = alert ? COLORS.coneAlert : COLORS.coneCalm;
+  const points = computeVisionCone(level, guard);
+  ctx.beginPath();
+  ctx.moveTo(points[0].x, points[0].y);
+  for (let i = 1; i < points.length; i += 1) ctx.lineTo(points[i].x, points[i].y);
+  ctx.closePath();
+  const alpha = guard.state === STATE_SUSPICIOUS ? 0.38 : 0.32;
+  ctx.fillStyle = `rgba(${color}, ${alpha})`;
+  ctx.fill();
+  ctx.strokeStyle = `rgba(${color}, 0.55)`;
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+}
+
+function drawGuard(ctx, guard, time) {
+  ctx.fillStyle = COLORS.guardUniform;
+  ctx.beginPath();
+  ctx.arc(guard.x, guard.y, GUARD.radius, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = guard.color;
+  ctx.lineWidth = 3;
+  ctx.stroke();
+  // Lantern held ahead, in the facing direction.
+  const lx = guard.x + Math.cos(guard.facing) * 20;
+  const ly = guard.y + Math.sin(guard.facing) * 20;
+  const glow = ctx.createRadialGradient(lx, ly, 1, lx, ly, 26);
+  glow.addColorStop(0, 'rgba(255, 210, 120, 0.8)');
+  glow.addColorStop(1, 'rgba(255, 210, 120, 0)');
+  ctx.fillStyle = glow;
+  ctx.beginPath();
+  ctx.arc(lx, ly, 26, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = '#ffe9b0';
+  ctx.beginPath();
+  ctx.arc(lx, ly, 5, 0, Math.PI * 2);
+  ctx.fill();
+  // Brass helmet.
+  ctx.fillStyle = guard.color;
+  ctx.beginPath();
+  ctx.arc(guard.x, guard.y, 6, 0, Math.PI * 2);
+  ctx.fill();
+  // Name below the guard, so it never collides with the "?" above the head.
+  ctx.font = 'bold 12px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#e8ecf4';
+  ctx.fillText(guard.name, guard.x, guard.y + GUARD.radius + 16);
+  let mark = '';
+  if (guard.state === STATE_ALERT) mark = '!';
+  else if (guard.state === STATE_SUSPICIOUS) mark = '?';
+  else if (guard.state === STATE_SEARCH) mark = '…';
+  if (mark) {
+    ctx.font = 'bold 22px sans-serif';
+    ctx.fillStyle = guard.state === STATE_ALERT ? '#ff5a4a' : '#ffd76a';
+    ctx.fillText(mark, guard.x, guard.y - GUARD.radius - 32);
+  }
+  // Awareness arc around the guard while it is noticing you.
+  if (guard.awareness > 0.05 && guard.state !== STATE_ALERT) {
+    ctx.strokeStyle = guard.awareness > GUARD.alarmedAt ? '#ff5a4a' : '#ffd76a';
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.arc(guard.x, guard.y, GUARD.radius + 6, -Math.PI / 2, -Math.PI / 2 + guard.awareness * Math.PI * 2);
+    ctx.stroke();
+  }
+}
+
+function drawPlayer(ctx, player, time) {
+  // Footstep noise ring: what the guards can hear, drawn for the player.
+  if (player.noiseRadius > 0) {
+    const pulse = 0.5 + 0.5 * Math.sin(player.noisePulse);
+    ctx.strokeStyle = `rgba(120, 200, 255, ${0.25 + 0.2 * pulse})`;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(player.x, player.y, player.noiseRadius * (0.85 + 0.15 * pulse), 0, Math.PI * 2);
+    ctx.stroke();
+  }
+  if (player.hiddenInPlant) {
+    ctx.fillStyle = 'rgba(47, 107, 60, 0.8)';
+    ctx.beginPath();
+    ctx.arc(player.x, player.y, 20, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  // Cloak: a teal triangle pointing where Wren faces, hood on top.
+  ctx.save();
+  ctx.translate(player.x, player.y);
+  ctx.rotate(player.facing);
+  ctx.fillStyle = player.sneaking ? '#2a9d8f' : COLORS.playerCloak;
+  ctx.beginPath();
+  ctx.moveTo(16, 0);
+  ctx.lineTo(-11, -11);
+  ctx.lineTo(-7, 0);
+  ctx.lineTo(-11, 11);
+  ctx.closePath();
+  ctx.fill();
+  ctx.fillStyle = COLORS.player;
+  ctx.beginPath();
+  ctx.arc(0, 0, 8, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+  ctx.font = 'bold 12px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#bff5ec';
+  ctx.fillText('WREN', player.x, player.y - 20);
+  if (player.sneaking) {
+    ctx.fillStyle = '#8ad8cc';
+    ctx.font = 'bold 11px sans-serif';
+    ctx.fillText('SNEAKING', player.x, player.y + 30);
+  }
+}
+
+function drawShadowOverlay(ctx, level) {
+  // The gallery is dark between the lamps: shadow is safety.
+  ctx.fillStyle = 'rgba(5, 8, 14, 0.15)';
+  ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+}
+
+function drawHud(ctx, state) {
+  const { player, guards, level, elapsed, detections } = state;
+  ctx.fillStyle = 'rgba(8, 10, 16, 0.82)';
+  ctx.fillRect(0, 0, CANVAS_WIDTH, 56);
+  ctx.fillStyle = '#f2e6c8';
+  ctx.font = 'bold 17px sans-serif';
+  ctx.textAlign = 'left';
+  ctx.fillText('NIGHTSHADE GALLERY', 16, 24);
+  ctx.font = '13px sans-serif';
+  ctx.fillStyle = '#c9c2ae';
+  const relicsLeft = level.relics.filter((r) => !r.taken).length;
+  ctx.fillText(
+    relicsLeft > 0 ? `Steal the ${relicsLeft} Moonlit Relic${relicsLeft > 1 ? 's' : ''}, then reach the EXIT unseen` : 'All relics stolen — reach the EXIT!',
+    16, 45,
+  );
+  // Relic pips.
+  for (let i = 0; i < 3; i += 1) {
+    ctx.fillStyle = level.relics[i].taken ? COLORS.relic : '#3a4152';
+    ctx.save();
+    ctx.translate(560 + i * 30, 22);
+    ctx.rotate(Math.PI / 4);
+    ctx.fillRect(-8, -8, 16, 16);
+    ctx.restore();
+  }
+  ctx.fillStyle = '#c9c2ae';
+  ctx.font = '13px sans-serif';
+  ctx.fillText(`RELICS ${player.relicsTaken}/3`, 650, 27);
+  // Detection eye meter.
+  let top = 0;
+  for (let i = 0; i < guards.length; i += 1) top = Math.max(top, guards[i].awareness);
+  const anyAlert = guards.some((g) => g.state === STATE_ALERT);
+  ctx.fillStyle = '#c9c2ae';
+  ctx.fillText(anyAlert ? 'SPOTTED!' : top > 0.30 ? 'SUSPICIOUS' : detections === 0 ? 'UNSEEN' : 'SEEN ONCE', 800, 27);
+  ctx.fillStyle = '#2a2f3a';
+  roundRect(ctx, 800, 34, 180, 10, 5);
+  ctx.fill();
+  ctx.fillStyle = anyAlert ? '#ff5a4a' : top > 0.30 ? '#ffd76a' : COLORS.player;
+  roundRect(ctx, 800, 34, 180 * top, 10, 5);
+  ctx.fill();
+  ctx.fillStyle = '#c9c2ae';
+  ctx.font = '13px sans-serif';
+  ctx.fillText(`TIME ${formatTime(elapsed)}`, 1030, 27);
+  ctx.fillText(`GHOST ${detections === 0 ? '★' : '—'}`, 1030, 45);
+  ctx.fillStyle = '#8a93a8';
+  ctx.font = '12px sans-serif';
+  ctx.fillText('WASD move · SHIFT sneak · E take relic · R restart', 16, CANVAS_HEIGHT - 12);
+  if (state.flash) {
+    ctx.fillStyle = state.flash;
+    ctx.font = 'bold 26px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(state.flashText || '', CANVAS_WIDTH / 2, 110);
+  }
+}
+
+function formatTime(seconds) {
+  const m = Math.floor(seconds / 60);
+  const s = Math.floor(seconds % 60);
+  return `${m}:${String(s).padStart(2, '0')}`;
+}
+
+function drawTitle(ctx, state) {
+  ctx.fillStyle = 'rgba(5, 8, 14, 0.78)';
+  ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#ffd76a';
+  ctx.font = 'bold 64px Georgia, serif';
+  ctx.fillText('NIGHTSHADE', CANVAS_WIDTH / 2, 210);
+  ctx.fillText('GALLERY', CANVAS_WIDTH / 2, 280);
+  ctx.fillStyle = '#e8ecf4';
+  ctx.font = '20px sans-serif';
+  ctx.fillText('Steal the three Moonlit Relics. Slip past the lantern guards.', CANVAS_WIDTH / 2, 340);
+  ctx.fillText('Never let a cone touch you. Leave by the green door, unseen.', CANVAS_WIDTH / 2, 372);
+  ctx.fillStyle = '#3fd8c2';
+  ctx.font = 'bold 22px sans-serif';
+  ctx.fillText('Press ENTER to begin the heist', CANVAS_WIDTH / 2, 450);
+  ctx.fillStyle = '#8a93a8';
+  ctx.font = '15px sans-serif';
+  ctx.fillText('WASD / arrows — move      SHIFT — sneak (slow, silent, hard to see)', CANVAS_WIDTH / 2, 510);
+  ctx.fillText('E — take a relic      Bushes hide you      Lamplight exposes you', CANVAS_WIDTH / 2, 536);
+  ctx.fillText('A guard who spots you chases. Break line of sight and he searches, then gives up.', CANVAS_WIDTH / 2, 562);
+}
+
+function drawWin(ctx, state) {
+  ctx.fillStyle = 'rgba(5, 14, 8, 0.8)';
+  ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#58e08a';
+  ctx.font = 'bold 58px Georgia, serif';
+  ctx.fillText(state.detections === 0 ? 'GHOST — NEVER SEEN' : 'OUT — BUT SEEN', CANVAS_WIDTH / 2, 250);
+  ctx.fillStyle = '#f2e6c8';
+  ctx.font = '22px sans-serif';
+  ctx.fillText(`All three relics stolen in ${formatTime(state.elapsed)}.`, CANVAS_WIDTH / 2, 310);
+  ctx.fillText(
+    state.detections === 0
+      ? 'No guard ever raised the alarm. The gallery never knew you were there.'
+      : `The alarm rose ${state.detections} time${state.detections > 1 ? 's' : ''} — the gallery knows someone came.`,
+    CANVAS_WIDTH / 2, 344,
+  );
+  ctx.fillStyle = '#3fd8c2';
+  ctx.font = 'bold 20px sans-serif';
+  ctx.fillText('Press R to run it again', CANVAS_WIDTH / 2, 420);
+}
+
+function drawCaught(ctx, state) {
+  ctx.fillStyle = 'rgba(20, 5, 5, 0.8)';
+  ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#ff5a4a';
+  ctx.font = 'bold 58px Georgia, serif';
+  ctx.fillText('CAUGHT', CANVAS_WIDTH / 2, 250);
+  ctx.fillStyle = '#f2e6c8';
+  ctx.font = '22px sans-serif';
+  ctx.fillText(`${state.caughtBy} caught Wren in the lamplight.`, CANVAS_WIDTH / 2, 310);
+  ctx.fillText('Watch the patrols. Wait for the cone to turn. Sneak through the dark.', CANVAS_WIDTH / 2, 344);
+  ctx.fillStyle = '#3fd8c2';
+  ctx.font = 'bold 20px sans-serif';
+  ctx.fillText('Press R to try again', CANVAS_WIDTH / 2, 420);
+}
+
+/** Draw one frame of the game. */
+export function drawGame(ctx, state) {
+  const { level, player, guards } = state;
+  const time = state.time;
+  drawFloor(ctx, level, time);
+  drawSolids(ctx, level);
+  drawPlants(ctx, level, time);
+  drawRelicsAndExit(ctx, level, time);
+  for (let i = 0; i < guards.length; i += 1) drawVisionCone(ctx, level, guards[i]);
+  for (let i = 0; i < guards.length; i += 1) drawGuard(ctx, guards[i], time);
+  drawPlayer(ctx, player, time);
+  drawShadowOverlay(ctx, level);
+  // Re-draw the lit essentials over the shadow so they stay readable.
+  for (let i = 0; i < guards.length; i += 1) drawGuard(ctx, guards[i], time);
+  drawPlayer(ctx, player, time);
+  drawHud(ctx, state);
+  if (state.screen === SCREEN_TITLE) drawTitle(ctx, state);
+  else if (state.screen === SCREEN_WIN) drawWin(ctx, state);
+  else if (state.screen === SCREEN_CAUGHT) drawCaught(ctx, state);
+}
