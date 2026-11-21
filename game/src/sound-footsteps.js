@@ -50,6 +50,12 @@ export function playFootstep(sneaking, running) {
   tone(freq, running ? 0.09 : 0.07, 'triangle', running ? 0.16 : sneaking ? 0.04 : 0.09, 0);
 }
 
+/** A bright double ping when a pebble lands and rings. */
+export function playPebbleTink() {
+  tone(1320, 0.12, 'sine', 0.08, 0);
+  tone(1760, 0.18, 'sine', 0.06, 0.07);
+}
+
 /** The rising sting when a guard's awareness crosses into alarm. */
 export function playAlarmSting() {
   tone(220, 0.5, 'sawtooth', 0.12, 0);

@@ -2,10 +2,11 @@
 // Owns the game state (level, player, guards, screen, timer, detections),
 // runs the player, the guards and the relic/exit rules, turns their events
 // into sounds and messages, and offers click-to-move for the mouse.
-import { STEP } from './config.js';
-import { buildGalleryLevel } from './level-gallery.js';
+import { STEP, PEBBLE } from './config.js';
+import { buildWing, WINGS } from './level-gallery.js';
 import { createPlayer, updatePlayer, relicInReach, playerAtExit, allRelicsTaken } from './player-stealth.js';
 import { createGuard, updateGuard, highestAwareness } from './guard-patrols.js';
+import { throwPebble, updatePebbles } from './pebble-distract.js';
 import { SCREEN_TITLE, SCREEN_PLAY, SCREEN_WIN, SCREEN_CAUGHT } from './render-gallery.js';
 import {
   ensureAudio, playFootstep, playAlarmSting, playSuspicionBlip,
@@ -13,15 +14,21 @@ import {
 } from './sound-footsteps.js';
 
 export function createGameState() {
-  const level = buildGalleryLevel();
+  const level = buildWing(0);
   return {
     level,
+    wingIndex: 0,
     player: createPlayer(level.playerStart),
     guards: level.guardSpawns.map((spawn) => createGuard(spawn)),
     screen: SCREEN_TITLE,
     time: 0,
     elapsed: 0,
     detections: 0,
+    totalRelics: 0,
+    score: 0,
+    pebblesLeft: PEBBLE.perWing,
+    thrownPebbles: [],
+    mouse: null,
     caughtBy: '',
     flash: null,
     flashText: '',
@@ -36,6 +43,29 @@ export function resetGame(state) {
   const fresh = createGameState();
   fresh.screen = SCREEN_PLAY;
   Object.assign(state, fresh);
+}
+
+/** Load one wing of the heist, keeping the run's totals and the clock. */
+export function loadWing(state, index) {
+  const level = buildWing(index);
+  state.level = level;
+  state.wingIndex = index;
+  state.player = createPlayer(level.playerStart);
+  state.guards = level.guardSpawns.map((spawn) => createGuard(spawn));
+  state.pebblesLeft = PEBBLE.perWing;
+  state.thrownPebbles = [];
+  state.moveTarget = null;
+  state.screen = SCREEN_PLAY;
+  setFlash(state, `${WINGS[index].name} — ${level.relics.length} RELICS`, 2.2);
+}
+
+/** Throw a pebble toward the mouse, or ahead of Wren when there is none. */
+export function throwPebbleAt(state) {
+  const target = state.mouse || {
+    x: state.player.x + Math.cos(state.player.facing) * PEBBLE.range,
+    y: state.player.y + Math.sin(state.player.facing) * PEBBLE.range,
+  };
+  return throwPebble(state, target.x, target.y);
 }
 
 export function startGame(state) {
@@ -105,6 +135,7 @@ export function stepGame(state, takeRelic, dt) {
   }
   if (state.screen !== SCREEN_PLAY) return;
   state.elapsed += step;
+  updatePebbles(state, step);
 
   const keys = keysFromMoveTarget(state);
   updatePlayer(state.level, state.player, keys, step);
@@ -124,16 +155,27 @@ export function stepGame(state, takeRelic, dt) {
     if (relic) {
       relic.taken = true;
       state.player.relicsTaken += 1;
+      state.score += 100;
       playRelicChime();
       if (allRelicsTaken(state.level)) {
         setFlash(state, 'ALL RELICS STOLEN — THE EXIT IS OPEN', 2.2);
       } else {
-        setFlash(state, `${relic.name.toUpperCase()} TAKEN — ${3 - state.player.relicsTaken} TO GO`, 1.6);
+        setFlash(state, `${relic.name.toUpperCase()} TAKEN — ${state.level.relics.length - state.player.relicsTaken} TO GO`, 1.6);
       }
     }
   }
 
   if (allRelicsTaken(state.level) && playerAtExit(state.level, state.player)) {
+    state.totalRelics += state.level.relics.length;
+    if (state.wingIndex < WINGS.length - 1) {
+      // One wing down: keep the run going into the next wing.
+      state.score += 250;
+      loadWing(state, state.wingIndex + 1);
+      return;
+    }
+    // The last wing clears like the others — its +250 counts too.
+    state.score += 250;
+    if (state.detections === 0) state.score += 500;
     state.screen = SCREEN_WIN;
     playGhostArpeggio();
   }

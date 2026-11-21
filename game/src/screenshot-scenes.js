@@ -5,7 +5,7 @@
 // the moment the scene wants. The same seed always gives the same frame.
 import { STEP, GUARD } from './config.js';
 import { SCREEN_PLAY } from './render-gallery.js';
-import { resetGame, stepGame } from './game-main.js';
+import { resetGame, stepGame, loadWing, throwPebbleAt } from './game-main.js';
 import { guardSeesPlayer } from './vision-cones.js';
 import { highestAwareness } from './guard-patrols.js';
 import { circleHitsSolid } from './level-gallery.js';
@@ -47,8 +47,10 @@ function driveTo(state, tx, ty, mode, maxSeconds, options) {
   for (let i = 0; i < budget; i += 1) {
     // Spotted mid-route: break for the nearest fern and wait until the
     // guards calm down, instead of standing in the open getting caught.
-    if (!opts.bold && playerIsSeen(state)) {
+    if (!opts.bold && !hiding && playerIsSeen(state)) {
+      hiding = true;
       hideUntilSafe(state);
+      hiding = false;
       if (state.screen !== SCREEN_PLAY) return false;
       continue;
     }
@@ -167,17 +169,46 @@ function playerIsSeen(state) {
   return false;
 }
 
-/** Nearest shade-fern to Wren: the place to vanish into. */
+/** A plant is cover only when no patrol ever goes near it. Waypoints are
+ * where guards stop and look around, so a fern beside one is a trap. */
+function plantIsSafe(state, p) {
+  for (let g = 0; g < state.guards.length; g += 1) {
+    const guard = state.guards[g];
+    if (Math.hypot(guard.x - p.x, guard.y - p.y) < 110) return false;
+    const route = guard.route;
+    for (let j = 0; j < route.length; j += 1) {
+      if (Math.hypot(route[j].x - p.x, route[j].y - p.y) < 70) return false;
+      const next = route[(j + 1) % route.length];
+      if (pointToSegment(p.x, p.y, route[j].x, route[j].y, next.x, next.y) < 45) return false;
+    }
+  }
+  return true;
+}
+
+function pointToSegment(px, py, x1, y1, x2, y2) {
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  const len2 = dx * dx + dy * dy;
+  let t = len2 === 0 ? 0 : ((px - x1) * dx + (py - y1) * dy) / len2;
+  t = Math.max(0, Math.min(1, t));
+  return Math.hypot(px - (x1 + t * dx), py - (y1 + t * dy));
+}
+
+/** Nearest SAFE shade-fern to Wren: the place to vanish into. */
 function nearestPlant(state) {
   let best = null;
   let bestDist = Infinity;
   for (let i = 0; i < state.level.plants.length; i += 1) {
     const p = state.level.plants[i];
+    if (!plantIsSafe(state, p)) continue;
     const d = Math.hypot(p.x - state.player.x, p.y - state.player.y);
     if (d < bestDist) { bestDist = d; best = p; }
   }
   return best;
 }
+
+// True while a hide is already running: driveTo must not start another one.
+let hiding = false;
 
 /**
  * Slip into the nearest fern and stay still until every guard's awareness
@@ -186,22 +217,26 @@ function nearestPlant(state) {
  */
 function hideUntilSafe(state) {
   const plant = nearestPlant(state);
-  if (!plant) return;
-  const path = findPath(state.level, state.player.x, state.player.y, plant.x, plant.y);
-  let leg = 0;
-  const budget = Math.round(20 / STEP);
-  for (let i = 0; i < budget; i += 1) {
-    const point = path[leg] || { x: plant.x, y: plant.y };
-    const keys = keysToward(state, point.x, point.y, SNEAK);
-    if (!keys) {
-      leg += 1;
-      if (leg >= path.length) break;
-      continue;
+  const dist = plant ? Math.hypot(plant.x - state.player.x, plant.y - state.player.y) : Infinity;
+  if (!plant || dist > 260) {
+    // No close safe cover: freeze where you are and let the cones sweep
+    // past. A long run through patrols to a far fern gets you caught;
+    // standing still in the dark lets awareness fall on its own.
+    const waitBudget = Math.round(8 / STEP);
+    for (let i = 0; i < waitBudget; i += 1) {
+      state.keys = { up: false, down: false, left: false, right: false, sneak: true, run: false };
+      stepGame(state, false);
+      if (state.screen !== SCREEN_PLAY) return;
+      if (highestAwareness(state.guards) < 0.08) return;
     }
-    state.keys = keys;
-    stepGame(state, false);
-    if (state.screen !== SCREEN_PLAY) return;
+    return;
   }
+  // Walk to the fern the careful way, waiting out watched stretches, then
+  // stay still in it until every guard's awareness has fallen back near zero.
+  hiding = true;
+  driveTo(state, plant.x, plant.y, SNEAK, 20);
+  hiding = false;
+  if (state.screen !== SCREEN_PLAY) return;
   const waitBudget = Math.round(20 / STEP);
   for (let i = 0; i < waitBudget; i += 1) {
     state.keys = { up: false, down: false, left: false, right: false, sneak: true, run: false };
@@ -225,14 +260,18 @@ function stealRelic(state, relic, retreat) {
 }
 
 function stageCover(state) {
-  // Mid-heist: one relic stolen, Wren crouched behind the great plinth while
-  // two lantern cones sweep past. The frame must show cover, cones and exit.
+  // The near miss, mid-heist: one relic stolen, Wren frozen at the edge of
+  // Bram's cone in the lamplight, his "?" and "WHAT WAS THAT?" over his head.
+  // The frame must show a relic taken, a cone, a guard noticing, and the exit.
   stealRelic(state, state.level.relics[2], { x: 140, y: 300 });
-  driveTo(state, 300, 340, SNEAK, 20);
-  driveTo(state, 440, 340, SNEAK, 15);
-  driveTo(state, 560, 380, SNEAK, 15);
-  driveTo(state, 672, 318, SNEAK, 15);
-  waitSeconds(state, 1.5);
+  driveTo(state, 760, 300, SNEAK, 30, { bold: true, stopAtAwareness: 0.5 });
+  const budget = Math.round(20 / STEP);
+  for (let i = 0; i < budget; i += 1) {
+    state.keys = { up: false, down: false, left: false, right: false, sneak: false, run: false };
+    stepGame(state, false);
+    if (highestAwareness(state.guards) >= 0.5) break;
+    if (state.screen !== SCREEN_PLAY) break;
+  }
   return { screen: SCREEN_PLAY };
 }
 
@@ -252,23 +291,38 @@ function stagePatrol(state) {
 }
 
 function stageAlarm(state) {
-  // The near miss: Wren steps out of the dark a breath too early, Bram's
-  // cone catches her, his awareness climbs and the meter burns amber.
-  // Bold on purpose: she walks straight into the cone's path and freezes.
-  // (760, 300) sits in lamplight straight ahead of Bram's southward leg.
-  driveTo(state, 760, 300, SNEAK, 30, { bold: true, stopAtAwareness: 0.45 });
+  // The pebble play: Wren lures Bram toward a ringing pebble, then slips
+  // past — a breath too late, his cone catches her and the meter burns amber.
+  // The frame must show the pebble ring, a searching guard, and the near miss.
+  state.mouse = { x: 700, y: 200 };
+  throwPebbleAt(state);
+  waitSeconds(state, 1.0);
+  driveTo(state, 760, 300, SNEAK, 30, { bold: true, stopAtAwareness: 0.35 });
   const budget = Math.round(20 / STEP);
   for (let i = 0; i < budget; i += 1) {
     state.keys = { up: false, down: false, left: false, right: false, sneak: false, run: false };
     stepGame(state, false);
-    if (highestAwareness(state.guards) >= 0.45) break;
+    if (highestAwareness(state.guards) >= 0.35) break;
     if (state.screen !== SCREEN_PLAY) break;
   }
+  // One more pebble, right now, so its ring is fresh in the frame — and no
+  // extra waiting in the cone: awareness is already at the edge.
+  state.mouse = { x: 700, y: 200 };
+  throwPebbleAt(state);
+  waitSeconds(state, 0.3);
   return { screen: SCREEN_PLAY };
 }
 
 function stageGhost(state) {
-  // The whole heist, played clean: three relics, the green door, never seen.
+  // The finale: the Star Vault, played clean, as the end of a full three-wing
+  // run — seven relics already stolen in the wings behind her, three more
+  // here, the green door, never seen. The win screen tells the whole heist.
+  // The Vault shares the Gallery's floor plan, so the run is the same shape
+  // that already proved itself there — only the patrols are faster.
+  // Seven relics + two wing-clear bonuses (250 each) already banked.
+  state.totalRelics = 7;
+  state.score = 1200;
+  loadWing(state, 2);
   stealRelic(state, state.level.relics[2], { x: 140, y: 300 });
   driveTo(state, 300, 340, SNEAK, 20);
   driveTo(state, 440, 340, SNEAK, 15);

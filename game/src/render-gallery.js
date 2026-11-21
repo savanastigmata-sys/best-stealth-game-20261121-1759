@@ -4,9 +4,11 @@
 // teal cloak, the glowing exit, and a HUD that says the objective, the
 // relics, the detection meter and whether you are still unseen.
 import { CANVAS_WIDTH, CANVAS_HEIGHT, COLORS, GUARD, TILE } from './config.js';
+import { WINGS } from './level-gallery.js';
 import { computeVisionCone } from './vision-cones.js';
 import { STATE_PATROL, STATE_SUSPICIOUS, STATE_ALERT, STATE_SEARCH } from './guard-patrols.js';
 import { allRelicsTaken } from './player-stealth.js';
+import { drawPebbles } from './pebble-distract.js';
 
 export const SCREEN_TITLE = 'title';
 export const SCREEN_PLAY = 'play';
@@ -160,11 +162,11 @@ function drawVisionCone(ctx, level, guard) {
   ctx.moveTo(points[0].x, points[0].y);
   for (let i = 1; i < points.length; i += 1) ctx.lineTo(points[i].x, points[i].y);
   ctx.closePath();
-  const alpha = guard.state === STATE_SUSPICIOUS ? 0.38 : 0.32;
+  const alpha = guard.state === STATE_SUSPICIOUS ? 0.5 : guard.state === STATE_ALERT ? 0.5 : 0.42;
   ctx.fillStyle = `rgba(${color}, ${alpha})`;
   ctx.fill();
-  ctx.strokeStyle = `rgba(${color}, 0.55)`;
-  ctx.lineWidth = 1.5;
+  ctx.strokeStyle = `rgba(${color}, 0.85)`;
+  ctx.lineWidth = 2.5;
   ctx.stroke();
 }
 
@@ -208,6 +210,12 @@ function drawGuard(ctx, guard, time) {
     ctx.font = 'bold 22px sans-serif';
     ctx.fillStyle = guard.state === STATE_ALERT ? '#ff5a4a' : '#ffd76a';
     ctx.fillText(mark, guard.x, guard.y - GUARD.radius - 32);
+  }
+  // A suspicious guard says what he is thinking: the near miss, out loud.
+  if (guard.state === STATE_SUSPICIOUS) {
+    ctx.font = 'bold 11px sans-serif';
+    ctx.fillStyle = '#ffd76a';
+    ctx.fillText('WHAT WAS THAT?', guard.x, guard.y - GUARD.radius - 52);
   }
   // Awareness arc around the guard while it is noticing you.
   if (guard.awareness > 0.05 && guard.state !== STATE_ALERT) {
@@ -256,7 +264,11 @@ function drawPlayer(ctx, player, time) {
   ctx.textAlign = 'center';
   ctx.fillStyle = '#bff5ec';
   ctx.fillText('WREN', player.x, player.y - 20);
-  if (player.sneaking) {
+  if (player.hiddenInPlant) {
+    ctx.fillStyle = '#7ee2a0';
+    ctx.font = 'bold 11px sans-serif';
+    ctx.fillText('HIDDEN', player.x, player.y + 30);
+  } else if (player.sneaking) {
     ctx.fillStyle = '#8ad8cc';
     ctx.font = 'bold 11px sans-serif';
     ctx.fillText('SNEAKING', player.x, player.y + 30);
@@ -276,7 +288,7 @@ function drawHud(ctx, state) {
   ctx.fillStyle = '#f2e6c8';
   ctx.font = 'bold 17px sans-serif';
   ctx.textAlign = 'left';
-  ctx.fillText('NIGHTSHADE GALLERY', 16, 24);
+  ctx.fillText(`NIGHTSHADE GALLERY — ${WINGS[state.wingIndex].name}`, 16, 24);
   ctx.font = '13px sans-serif';
   ctx.fillStyle = '#c9c2ae';
   const relicsLeft = level.relics.filter((r) => !r.taken).length;
@@ -284,8 +296,8 @@ function drawHud(ctx, state) {
     relicsLeft > 0 ? `Steal the ${relicsLeft} Moonlit Relic${relicsLeft > 1 ? 's' : ''}, then reach the EXIT unseen` : 'All relics stolen — reach the EXIT!',
     16, 45,
   );
-  // Relic pips.
-  for (let i = 0; i < 3; i += 1) {
+  // Relic pips, one per relic in this wing.
+  for (let i = 0; i < level.relics.length; i += 1) {
     ctx.fillStyle = level.relics[i].taken ? COLORS.relic : '#3a4152';
     ctx.save();
     ctx.translate(560 + i * 30, 22);
@@ -295,7 +307,7 @@ function drawHud(ctx, state) {
   }
   ctx.fillStyle = '#c9c2ae';
   ctx.font = '13px sans-serif';
-  ctx.fillText(`RELICS ${player.relicsTaken}/3`, 650, 27);
+  ctx.fillText(`RELICS ${player.relicsTaken}/${level.relics.length}`, 560 + level.relics.length * 30 + 8, 27);
   // Detection eye meter.
   let top = 0;
   for (let i = 0; i < guards.length; i += 1) top = Math.max(top, guards[i].awareness);
@@ -311,12 +323,35 @@ function drawHud(ctx, state) {
   ctx.fillStyle = '#c9c2ae';
   ctx.font = '13px sans-serif';
   ctx.fillText(`TIME ${formatTime(elapsed)}`, 1030, 27);
+  ctx.fillText(`SCORE ${state.score}`, 1150, 27);
   ctx.fillText(`GHOST ${detections === 0 ? '★' : '—'}`, 1030, 45);
+  ctx.fillText(`WING ${state.wingIndex + 1}/3`, 1150, 45);
+  // Bottom bar: controls, pebbles, the legend, and every guard's state.
+  ctx.fillStyle = 'rgba(8, 10, 16, 0.82)';
+  ctx.fillRect(0, CANVAS_HEIGHT - 30, CANVAS_WIDTH, 30);
   ctx.fillStyle = '#8a93a8';
   ctx.font = '12px sans-serif';
-  ctx.fillText('WASD move · SHIFT sneak · E take relic · R restart', 16, CANVAS_HEIGHT - 12);
+  ctx.fillText('WASD move · SHIFT sneak · E take relic · Q throw pebble · R restart', 16, CANVAS_HEIGHT - 11);
+  ctx.fillStyle = '#c9c2ae';
+  let pebbleText = 'PEBBLES ';
+  for (let i = 0; i < 5; i += 1) pebbleText += i < state.pebblesLeft ? '●' : '○';
+  ctx.fillText(pebbleText, 430, CANVAS_HEIGHT - 11);
+  ctx.fillStyle = '#8a93a8';
+  ctx.fillText('cone = seen · fern = hide · lamp = exposed', 580, CANVAS_HEIGHT - 11);
+  let chipX = 890;
+  for (let i = 0; i < guards.length; i += 1) {
+    const g = guards[i];
+    const dot = g.state === STATE_ALERT ? '#ff5a4a' : g.state === STATE_SUSPICIOUS ? '#ffd76a' : g.state === STATE_SEARCH ? '#ff9a3c' : g.color;
+    ctx.fillStyle = dot;
+    ctx.beginPath();
+    ctx.arc(chipX, CANVAS_HEIGHT - 15, 5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#c9c2ae';
+    ctx.fillText(g.name, chipX + 8, CANVAS_HEIGHT - 11);
+    chipX += 8 + ctx.measureText(g.name).width + 18;
+  }
   if (state.flash) {
-    ctx.fillStyle = state.flash;
+    ctx.fillStyle = '#ffd76a';
     ctx.font = 'bold 26px sans-serif';
     ctx.textAlign = 'center';
     ctx.fillText(state.flashText || '', CANVAS_WIDTH / 2, 110);
@@ -339,16 +374,21 @@ function drawTitle(ctx, state) {
   ctx.fillText('GALLERY', CANVAS_WIDTH / 2, 280);
   ctx.fillStyle = '#e8ecf4';
   ctx.font = '20px sans-serif';
-  ctx.fillText('Steal the three Moonlit Relics. Slip past the lantern guards.', CANVAS_WIDTH / 2, 340);
+  ctx.fillText('Steal ten Moonlit Relics across three wings. Slip past the lantern guards.', CANVAS_WIDTH / 2, 340);
   ctx.fillText('Never let a cone touch you. Leave by the green door, unseen.', CANVAS_WIDTH / 2, 372);
+  ctx.fillStyle = '#c9c2ae';
+  ctx.font = '17px sans-serif';
+  ctx.fillText('1 · Moonlit Gallery  —  3 relics, 5 guards', CANVAS_WIDTH / 2, 416);
+  ctx.fillText('2 · Ember Archive  —  4 relics, 6 guards, brighter lamps', CANVAS_WIDTH / 2, 442);
+  ctx.fillText('3 · Star Vault  —  3 relics, 5 guards, faster patrols', CANVAS_WIDTH / 2, 468);
   ctx.fillStyle = '#3fd8c2';
   ctx.font = 'bold 22px sans-serif';
-  ctx.fillText('Press ENTER to begin the heist', CANVAS_WIDTH / 2, 450);
+  ctx.fillText('Press ENTER to begin the heist', CANVAS_WIDTH / 2, 520);
   ctx.fillStyle = '#8a93a8';
   ctx.font = '15px sans-serif';
-  ctx.fillText('WASD / arrows — move      SHIFT — sneak (slow, silent, hard to see)', CANVAS_WIDTH / 2, 510);
-  ctx.fillText('E — take a relic      Bushes hide you      Lamplight exposes you', CANVAS_WIDTH / 2, 536);
-  ctx.fillText('A guard who spots you chases. Break line of sight and he searches, then gives up.', CANVAS_WIDTH / 2, 562);
+  ctx.fillText('WASD / arrows — move      SHIFT — sneak (slow, silent, hard to see)', CANVAS_WIDTH / 2, 566);
+  ctx.fillText('E — take a relic      Q — throw a pebble to lure a guard away', CANVAS_WIDTH / 2, 592);
+  ctx.fillText('Bushes hide you      Lamplight exposes you', CANVAS_WIDTH / 2, 618);
 }
 
 function drawWin(ctx, state) {
@@ -360,10 +400,10 @@ function drawWin(ctx, state) {
   ctx.fillText(state.detections === 0 ? 'GHOST — NEVER SEEN' : 'OUT — BUT SEEN', CANVAS_WIDTH / 2, 250);
   ctx.fillStyle = '#f2e6c8';
   ctx.font = '22px sans-serif';
-  ctx.fillText(`All three relics stolen in ${formatTime(state.elapsed)}.`, CANVAS_WIDTH / 2, 310);
+  ctx.fillText(`All ten relics stolen in ${formatTime(state.elapsed)}. Score ${state.score}.`, CANVAS_WIDTH / 2, 310);
   ctx.fillText(
     state.detections === 0
-      ? 'No guard ever raised the alarm. The gallery never knew you were there.'
+      ? 'No guard ever raised the alarm. The gallery never knew you were there. Ghost bonus +500.'
       : `The alarm rose ${state.detections} time${state.detections > 1 ? 's' : ''} — the gallery knows someone came.`,
     CANVAS_WIDTH / 2, 344,
   );
@@ -403,6 +443,7 @@ export function drawGame(ctx, state) {
   // Re-draw the lit essentials over the shadow so they stay readable.
   for (let i = 0; i < guards.length; i += 1) drawGuard(ctx, guards[i], time);
   drawPlayer(ctx, player, time);
+  drawPebbles(ctx, state.thrownPebbles);
   drawHud(ctx, state);
   if (state.screen === SCREEN_TITLE) drawTitle(ctx, state);
   else if (state.screen === SCREEN_WIN) drawWin(ctx, state);

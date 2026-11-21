@@ -2,7 +2,7 @@
 // animation loop, and the ?shot= staging that renders one fixed scene for a
 // screenshot. No network, no libraries: the canvas and these modules are all.
 import { CANVAS_WIDTH, CANVAS_HEIGHT, STEP } from './config.js';
-import { createGameState, startGame, resetGame, stepGame } from './game-main.js';
+import { createGameState, startGame, resetGame, stepGame, throwPebbleAt } from './game-main.js';
 import { drawGame, SCREEN_TITLE, SCREEN_PLAY } from './render-gallery.js';
 import { stageShot } from './screenshot-scenes.js';
 
@@ -37,11 +37,19 @@ if (shotName) {
     }
     if (event.code === 'Enter' && state.screen === SCREEN_TITLE) startGame(state);
     if (event.code === 'KeyE') takeQueued = true;
+    if (event.code === 'KeyQ' && state.screen === SCREEN_PLAY) throwPebbleAt(state);
     if (event.code === 'KeyR' && state.screen !== SCREEN_TITLE) resetGame(state);
   });
   window.addEventListener('keyup', (event) => {
     const key = KEYMAP[event.code];
     if (key) state.keys[key] = false;
+  });
+  canvas.addEventListener('pointermove', (event) => {
+    const rect = canvas.getBoundingClientRect();
+    state.mouse = {
+      x: ((event.clientX - rect.left) / rect.width) * CANVAS_WIDTH,
+      y: ((event.clientY - rect.top) / rect.height) * CANVAS_HEIGHT,
+    };
   });
   canvas.addEventListener('pointerdown', (event) => {
     const rect = canvas.getBoundingClientRect();

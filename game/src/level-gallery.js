@@ -95,12 +95,210 @@ export function buildGalleryLevel() {
     },
     {
       name: 'Tarn', color: '#e07ab8',
-      route: [{ x: 560, y: 540 }, { x: 1120, y: 540 }, { x: 1120, y: 660 }, { x: 560, y: 660 }],
+      route: [{ x: 560, y: 540 }, { x: 1140, y: 540 }, { x: 1120, y: 660 }, { x: 560, y: 660 }],
     },
   ];
   // Faint dotted routes drawn on the floor, so patrols can be learned.
   const guardRoutes = guardSpawns.map((s) => ({ color: s.color, points: s.route }));
   return { walls, plinths, plants, lamps, relics, exit, playerStart, guardSpawns, guardRoutes };
+}
+
+export function buildArchiveLevel() {
+  const W = CANVAS_WIDTH;
+  const H = CANVAS_HEIGHT;
+  const walls = [
+    // Outer shell.
+    rect(0, 0, W, 40),
+    rect(0, H - 40, W, 40),
+    rect(0, 0, 40, H),
+    rect(W - 40, 0, 40, H),
+    // North hall: door gap x 280..360.
+    rect(40, 200, 240, 36),
+    rect(360, 200, 200, 36),
+    // Middle spine: door gaps y 200..280 and y 480..560.
+    rect(700, 40, 36, 160),
+    rect(700, 280, 36, 200),
+    rect(700, 560, 36, 120),
+    // East store: door gap y 400..480.
+    rect(1040, 200, 36, 200),
+    rect(1040, 480, 36, 200),
+    // Free-standing pillars.
+    rect(300, 420, 36, 120),
+    rect(900, 420, 36, 120),
+    rect(560, 100, 36, 80),
+  ];
+  const plinths = [
+    rect(220, 120, 64, 40),
+    rect(480, 120, 64, 40),
+    rect(820, 120, 64, 40),
+    rect(1120, 120, 64, 40),
+    rect(180, 300, 64, 40),
+    rect(480, 300, 64, 40),
+    rect(820, 300, 64, 40),
+    rect(1120, 300, 64, 40),
+    rect(220, 480, 64, 40),
+    rect(480, 560, 64, 40),
+    rect(820, 560, 64, 40),
+    rect(1120, 560, 64, 40),
+  ];
+  const plants = [
+    { x: 140, y: 130, r: 28 },
+    { x: 620, y: 260, r: 28 },
+    { x: 940, y: 130, r: 28 },
+    { x: 140, y: 420, r: 30 },
+    { x: 620, y: 460, r: 28 },
+    { x: 940, y: 600, r: 28 },
+    { x: 1180, y: 420, r: 26 },
+  ];
+  // The Archive burns brighter: more lamplight, less safe dark.
+  const lamps = [
+    { x: 300, y: 130, r: 135 },
+    { x: 640, y: 130, r: 135 },
+    { x: 1060, y: 130, r: 135 },
+    { x: 200, y: 420, r: 130 },
+    { x: 640, y: 460, r: 130 },
+    { x: 1060, y: 460, r: 130 },
+    { x: 860, y: 300, r: 120 },
+  ];
+  const relics = [
+    { id: 'ember-ruby', name: 'Ember Ruby', x: 1150, y: 110, taken: false },
+    { id: 'cinder-opal', name: 'Cinder Opal', x: 180, y: 110, taken: false },
+    { id: 'ash-sapphire', name: 'Ash Sapphire', x: 1150, y: 610, taken: false },
+    { id: 'coal-diamond', name: 'Coal Diamond', x: 640, y: 620, taken: false },
+  ];
+  const exit = rect(1150, 635, 80, 40);
+  const playerStart = { x: 92, y: 620 };
+  const guardSpawns = [
+    {
+      name: 'Bram', color: '#e8b23a',
+      route: [{ x: 200, y: 90 }, { x: 440, y: 90 }, { x: 440, y: 280 }, { x: 200, y: 280 }],
+    },
+    {
+      name: 'Odo', color: '#e07840',
+      route: [{ x: 780, y: 90 }, { x: 1100, y: 90 }, { x: 1100, y: 280 }, { x: 780, y: 280 }],
+    },
+    {
+      name: 'Mirelle', color: '#d8e84a',
+      route: [{ x: 200, y: 390 }, { x: 440, y: 390 }, { x: 440, y: 620 }, { x: 200, y: 620 }],
+    },
+    {
+      name: 'Kess', color: '#7ab8ff',
+      route: [{ x: 780, y: 390 }, { x: 1100, y: 390 }, { x: 1100, y: 620 }, { x: 780, y: 620 }],
+    },
+    {
+      name: 'Tarn', color: '#e07ab8',
+      route: [{ x: 620, y: 120 }, { x: 620, y: 620 }, { x: 760, y: 620 }, { x: 760, y: 120 }],
+    },
+    {
+      name: 'Voss', color: '#9fe870',
+      route: [{ x: 120, y: 70 }, { x: 620, y: 70 }, { x: 620, y: 255 }, { x: 120, y: 255 }],
+    },
+  ];
+  const guardRoutes = guardSpawns.map((s) => ({ color: s.color, points: s.route }));
+  return { walls, plinths, plants, lamps, relics, exit, playerStart, guardSpawns, guardRoutes, patrolSpeedMul: 1.1 };
+}
+
+export function buildVaultLevel() {
+  const W = CANVAS_WIDTH;
+  const H = CANVAS_HEIGHT;
+  // The Vault reuses the Gallery's proven walls — the same floor plan, a
+  // darker night: fewer lamps, more ferns, faster patrols, new relics.
+  // The shape is familiar; the timing is not.
+  const walls = [
+    // Outer shell.
+    rect(0, 0, W, 40),
+    rect(0, H - 40, W, 40),
+    rect(0, 0, 40, H),
+    rect(W - 40, 0, 40, H),
+    // West wing divider: door gap y 300..380.
+    rect(420, 40, 36, 260),
+    rect(420, 380, 36, 300),
+    // East wing divider: door gap y 240..340.
+    rect(840, 340, 36, 340),
+    rect(840, 40, 36, 200),
+    // North hall divider: door gap x 200..280.
+    rect(40, 360, 160, 36),
+    rect(280, 360, 140, 36),
+    // South hall divider: door gap x 1000..1080.
+    rect(876, 200, 124, 36),
+    rect(1080, 200, 160, 36),
+    // Free-standing pillars that split sightlines.
+    rect(600, 420, 36, 120),
+    rect(1080, 420, 36, 120),
+  ];
+  const plinths = [
+    rect(180, 140, 64, 40),
+    rect(520, 140, 64, 40),
+    rect(940, 300, 64, 40),
+    rect(220, 460, 64, 40),
+    rect(480, 260, 64, 40),
+    rect(660, 500, 64, 40),
+    rect(1020, 560, 64, 40),
+    rect(1160, 460, 64, 40),
+    rect(360, 580, 64, 40),
+    rect(680, 280, 64, 40),
+  ];
+  const plants = [
+    { x: 120, y: 260, r: 30 },
+    { x: 340, y: 180, r: 28 },
+    { x: 780, y: 120, r: 28 },
+    { x: 940, y: 460, r: 30 },
+    { x: 580, y: 600, r: 28 },
+    { x: 1180, y: 320, r: 26 },
+    { x: 140, y: 560, r: 26 },
+    { x: 900, y: 620, r: 28 },
+  ];
+  // The Vault is dark: few lamps, long shadow to work in.
+  const lamps = [
+    { x: 300, y: 130, r: 120 },
+    { x: 640, y: 540, r: 120 },
+    { x: 1060, y: 130, r: 120 },
+    { x: 1060, y: 570, r: 110 },
+    { x: 760, y: 330, r: 110 },
+  ];
+  // Same pedestals as the Gallery, new relics: the run is the same shape.
+  const relics = [
+    { id: 'nova-idol', name: 'Nova Idol', x: 1150, y: 110, taken: false },
+    { id: 'star-locket', name: 'Star Locket', x: 640, y: 110, taken: false },
+    { id: 'comet-pearl', name: 'Comet Pearl', x: 180, y: 180, taken: false },
+  ];
+  const exit = rect(1150, 635, 80, 40);
+  const playerStart = { x: 92, y: 620 };
+  const guardSpawns = [
+    {
+      name: 'Bram', color: '#e8b23a',
+      route: [{ x: 500, y: 120 }, { x: 760, y: 120 }, { x: 760, y: 230 }, { x: 500, y: 230 }],
+    },
+    {
+      name: 'Odo', color: '#e07840',
+      route: [{ x: 480, y: 430 }, { x: 480, y: 620 }, { x: 760, y: 620 }, { x: 760, y: 430 }],
+    },
+    {
+      name: 'Mirelle', color: '#d8e84a',
+      route: [{ x: 920, y: 120 }, { x: 1180, y: 120 }, { x: 1180, y: 280 }, { x: 920, y: 280 }],
+    },
+    {
+      name: 'Kess', color: '#7ab8ff',
+      route: [{ x: 120, y: 110 }, { x: 330, y: 110 }, { x: 330, y: 320 }, { x: 120, y: 320 }],
+    },
+    {
+      name: 'Tarn', color: '#e07ab8',
+      route: [{ x: 560, y: 540 }, { x: 1140, y: 540 }, { x: 1120, y: 660 }, { x: 560, y: 660 }],
+    },
+  ];
+  const guardRoutes = guardSpawns.map((s) => ({ color: s.color, points: s.route }));
+  return { walls, plinths, plants, lamps, relics, exit, playerStart, guardSpawns, guardRoutes, patrolSpeedMul: 1.25 };
+}
+
+// The three wings of one heist, in order: 10 relics, 16 guards, one night.
+export const WINGS = [
+  { id: 'gallery', name: '1 · MOONLIT GALLERY', short: 'Gallery', build: buildGalleryLevel },
+  { id: 'archive', name: '2 · EMBER ARCHIVE', short: 'Archive', build: buildArchiveLevel },
+  { id: 'vault', name: '3 · STAR VAULT', short: 'Vault', build: buildVaultLevel },
+];
+
+export function buildWing(index) {
+  return WINGS[index].build();
 }
 
 /** Every solid rectangle in the level: walls plus plinths. */

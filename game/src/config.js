@@ -47,6 +47,14 @@ export const DETECTION = {
   plantMultiplier: 0.25,
 };
 
+export const PEBBLE = {
+  // Pebbles per wing: throw one to lure a guard to the landing spot.
+  perWing: 5,
+  range: 230,
+  hearRadius: 300,
+  searchSeconds: 3.5,
+};
+
 export const COLORS = {
   floorDark: '#1c2331',
   floorLight: '#242e42',

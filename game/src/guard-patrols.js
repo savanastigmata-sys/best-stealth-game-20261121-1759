@@ -105,7 +105,8 @@ function updateGuardPatrol(level, guard, dt, events) {
     return;
   }
   const target = guard.route[guard.routeIndex];
-  if (moveToward(level, guard, target.x, target.y, GUARD.patrolSpeed, dt)) {
+  const speed = GUARD.patrolSpeed * (level.patrolSpeedMul || 1);
+  if (moveToward(level, guard, target.x, target.y, speed, dt)) {
     guard.routeIndex = (guard.routeIndex + 1) % guard.route.length;
     guard.waitTimer = 1.2;
     events.push({ type: 'waypoint', guard: guard.name });
@@ -118,7 +119,7 @@ function updateGuardSuspicious(level, guard, player, dt) {
   guard.facing = Math.atan2(lookAt.y - guard.y, lookAt.x - guard.x);
   // Nearly sure: walk toward the spot to check it.
   if (guard.awareness >= GUARD.alarmedAt && guard.lastSeen) {
-    moveToward(level, guard, guard.lastSeen.x, guard.lastSeen.y, GUARD.searchSpeed, dt);
+    moveToward(level, guard, guard.lastSeen.x, guard.lastSeen.y, GUARD.searchSpeed * (level.patrolSpeedMul || 1), dt);
   }
   if (guard.stateTimer <= 0 && guard.awareness < GUARD.suspiciousAt) {
     guard.state = STATE_PATROL;
@@ -128,7 +129,7 @@ function updateGuardSuspicious(level, guard, player, dt) {
 
 function updateGuardAlert(level, guard, player, dt, events) {
   guard.stateTimer -= dt;
-  moveToward(level, guard, player.x, player.y, GUARD.chaseSpeed, dt);
+  moveToward(level, guard, player.x, player.y, GUARD.chaseSpeed * (level.patrolSpeedMul || 1), dt);
   if (Math.hypot(player.x - guard.x, player.y - guard.y) < GUARD.catchRadius) {
     events.push({ type: 'caught', guard: guard.name });
   }
@@ -141,7 +142,7 @@ function updateGuardAlert(level, guard, player, dt, events) {
 function updateGuardSearch(level, guard, dt) {
   guard.stateTimer -= dt;
   const target = guard.lastSeen || guard.route[guard.routeIndex];
-  if (moveToward(level, guard, target.x, target.y, GUARD.searchSpeed, dt)) {
+  if (moveToward(level, guard, target.x, target.y, GUARD.searchSpeed * (level.patrolSpeedMul || 1), dt)) {
     guard.facing += 0.03;
   }
   if (guard.stateTimer <= 0) {
